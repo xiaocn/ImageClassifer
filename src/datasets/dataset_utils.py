@@ -10,7 +10,7 @@ from six.moves import urllib
 import tensorflow as tf
 
 LABELS_FILENAME = 'labels.txt'
-
+DATA_NUMNAME = 'num.txt'
 
 def int64_feature(values):
   """Returns a TF-Feature of int64s.
@@ -84,7 +84,7 @@ def write_label_file(labels_to_class_names, dataset_dir,
     dataset_dir: The directory in which the labels file should be written.
     filename: The filename where the class names are written.
   """
-  labels_filename = os.path.join(dataset_dir, filename)
+  labels_filename = os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_" + filename)
   with tf.gfile.Open(labels_filename, 'w') as f:
     for label in labels_to_class_names:
       class_name = labels_to_class_names[label]
@@ -99,7 +99,7 @@ def has_labels(dataset_dir, filename=LABELS_FILENAME):
   Returns:
     `True` if the labels file exists and `False` otherwise.
   """
-  return tf.gfile.Exists(os.path.join(dataset_dir, filename))
+  return tf.gfile.Exists(os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_"+filename))
 
 
 def read_label_file(dataset_dir, filename=LABELS_FILENAME):
@@ -110,7 +110,7 @@ def read_label_file(dataset_dir, filename=LABELS_FILENAME):
   Returns:
     A map from a label (integer) to class name.
   """
-  labels_filename = os.path.join(dataset_dir, filename)
+  labels_filename = os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_"+filename)
   with tf.gfile.Open(labels_filename, 'rb') as f:
     lines = f.read().decode()
   lines = lines.split('\n')
@@ -121,3 +121,50 @@ def read_label_file(dataset_dir, filename=LABELS_FILENAME):
     index = line.index(':')
     labels_to_class_names[int(line[:index])] = line[index+1:]
   return labels_to_class_names
+
+
+def write_datanum_file(data_num_dict, dataset_dir,
+                     filename=DATA_NUMNAME):
+  """Writes a file with the list of class names.
+  Args:
+    labels_to_class_names: A map of (integer) labels to class names.
+    dataset_dir: The directory in which the labels file should be written.
+    filename: The filename where the class names are written.
+  """
+  datanum_filename = os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_" + filename)
+  with tf.gfile.Open(datanum_filename, 'w') as f:
+    for split_name in data_num_dict.keys():
+      data_num = data_num_dict[split_name]
+      f.write('%s:%d\n' % (split_name, data_num))
+
+
+def has_datanum(dataset_dir, filename=DATA_NUMNAME):
+  """Specifies whether or not the dataset directory contains a label map file.
+  Args:
+    dataset_dir: The directory in which the labels file is found.
+    filename: The filename where the class names are written.
+  Returns:
+    `True` if the labels file exists and `False` otherwise.
+  """
+  return tf.gfile.Exists(os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_"+filename))
+
+
+def read_datanum_file(dataset_dir, filename=DATA_NUMNAME):
+  """Reads the labels file and returns a mapping from ID to class name.
+  Args:
+    dataset_dir: The directory in which the labels file is found.
+    filename: The filename where the class names are written.
+  Returns:
+    A map from a label (integer) to class name.
+  """
+  datanum_filename = os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_"+filename)
+  with tf.gfile.Open(datanum_filename, 'rb') as f:
+    lines = f.read().decode()
+  lines = lines.split('\n')
+  lines = filter(None, lines)
+
+  data_to_num = {}
+  for line in lines:
+    index = line.index(':')
+    data_to_num[line[:index]] = int(line[index+1:])
+  return data_to_num

@@ -354,7 +354,7 @@ def _get_variables_to_train():
 
 def main(_):
   if not FLAGS.dataset_dir:
-    raise ValueError('You must supply the dataset directory with --dataset_dir')
+    raise ValueError('没有指定tfrecord数据集的路径，--dataset_dir')
 
   tf.logging.set_verbosity(tf.logging.INFO)
   with tf.Graph().as_default():
