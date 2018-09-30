@@ -3,168 +3,71 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
-import tarfile
 
-from six.moves import urllib
 import tensorflow as tf
+import tensorflow.contrib.slim as slim
 
-LABELS_FILENAME = 'labels.txt'
-DATA_NUMNAME = 'num.txt'
+from datasets import feature_utils
 
-def int64_feature(values):
-  """Returns a TF-Feature of int64s.
-  Args:
-    values: A scalar or list of values.
-  Returns:
-    A TF-Feature.
+
+def get_file_name(tfrecord_dir, split_name, shard_id=-1, shard_num=-1,
+                  label_name="labels.txt", num_name="num.txt"):
+  data_name = tfrecord_dir.split('/')[-1]
+  label_file = os.path.join(tfrecord_dir,data_name+label_name)
+  num_file = os.path.join(tfrecord_dir,data_name+num_name)
+  tfrecord_file = os.path.join(tfrecord_dir,"%s_%s_*.tfrecord" % (data_name, split_name))
+  if shard_num > 0:
+    tfrecord_file = os.path.join(tfrecord_dir,"%s_%s_%05d-of-%05d.tfrecord" %
+                                 (data_name, split_name, shard_id, shard_num))
+  return tfrecord_file,label_file,num_file
+
+
+def read_tfrecord(tfrecord_dir, split_name, reader=tf.TFRecordReader):
+  tfrecord_file, label_file, num_file = get_file_name(tfrecord_dir,split_name)
+  if not (tf.gfile.Exists(num_file) and tf.gfile.Exists(label_file)):
+    raise ValueError("%s没有缺失标签文件或样本数量说明文件" % tfrecord_dir)
+  label_name_dict = read_txtfile(label_file)
+  split_name_dict = read_txtfile(num_file)
+  item_desc_dict = feature_utils.items_to_desc(split_name_dict)
+  keys_to_features = feature_utils.keys_to_features()
+  items_to_handlers = feature_utils.items_to_handlers()
+  decoder = slim.tfexample_decoder.TFExampleDecoder(keys_to_features, items_to_handlers)
+  return slim.dataset.Dataset(
+      data_sources=tfrecord_file,
+      reader=reader,
+      decoder=decoder,
+      num_samples=split_name_dict[split_name],
+      items_to_descriptions=item_desc_dict,
+      num_classes=len(label_name_dict),
+      labels_to_names=label_name_dict)
+
+
+def write_txtfile(data, filename):
   """
-  if not isinstance(values, (tuple, list)):
-    values = [values]
-  return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
-
-
-def bytes_feature(values):
-  """Returns a TF-Feature of bytes.
-  Args:
-    values: A string.
-  Returns:
-    A TF-Feature.
+  将标签数据或其他数据写入文本文件
+  :param data: 要写入文件的数据
+  :param filename: 文件输出路径（含文件名）
+  :return: 无返回值
   """
-  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[values]))
+  with tf.gfile.Open(filename, 'w') as f:
+    for i in data:
+      item = data[i]
+      f.write('%s:%d\n' % (item, i))
 
 
-def float_feature(values):
-  """Returns a TF-Feature of floats.
-  Args:
-    values: A scalar of list of values.
-  Returns:
-    A TF-Feature.
+def read_txtfile(filename):
   """
-  if not isinstance(values, (tuple, list)):
-    values = [values]
-  return tf.train.Feature(float_list=tf.train.FloatList(value=values))
-
-
-def image_to_tfexample(image_data, image_format, height, width, class_id):
-  return tf.train.Example(features=tf.train.Features(feature={
-      'image/encoded': bytes_feature(image_data),
-      'image/format': bytes_feature(image_format),
-      'image/class/label': int64_feature(class_id),
-      'image/height': int64_feature(height),
-      'image/width': int64_feature(width),
-  }))
-
-
-def download_and_uncompress_tarball(tarball_url, dataset_dir):
-  """Downloads the `tarball_url` and uncompresses it locally.
-  Args:
-    tarball_url: The URL of a tarball file.
-    dataset_dir: The directory where the temporary files are stored.
+  读取文本文件
+  :param filename: 文件名（含路径）
+  :return: 返回以分割符分开的数据字典
   """
-  filename = tarball_url.split('/')[-1]
-  filepath = os.path.join(dataset_dir, filename)
-
-  def _progress(count, block_size, total_size):
-    sys.stdout.write('\r>> Downloading %s %.1f%%' % (
-        filename, float(count * block_size) / float(total_size) * 100.0))
-    sys.stdout.flush()
-  filepath, _ = urllib.request.urlretrieve(tarball_url, filepath, _progress)
-  print()
-  statinfo = os.stat(filepath)
-  print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
-  tarfile.open(filepath, 'r:gz').extractall(dataset_dir)
-
-
-def write_label_file(labels_to_class_names, dataset_dir,
-                     filename=LABELS_FILENAME):
-  """Writes a file with the list of class names.
-  Args:
-    labels_to_class_names: A map of (integer) labels to class names.
-    dataset_dir: The directory in which the labels file should be written.
-    filename: The filename where the class names are written.
-  """
-  labels_filename = os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_" + filename)
-  with tf.gfile.Open(labels_filename, 'w') as f:
-    for label in labels_to_class_names:
-      class_name = labels_to_class_names[label]
-      f.write('%d:%s\n' % (label, class_name))
-
-
-def has_labels(dataset_dir, filename=LABELS_FILENAME):
-  """Specifies whether or not the dataset directory contains a label map file.
-  Args:
-    dataset_dir: The directory in which the labels file is found.
-    filename: The filename where the class names are written.
-  Returns:
-    `True` if the labels file exists and `False` otherwise.
-  """
-  return tf.gfile.Exists(os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_"+filename))
-
-
-def read_label_file(dataset_dir, filename=LABELS_FILENAME):
-  """Reads the labels file and returns a mapping from ID to class name.
-  Args:
-    dataset_dir: The directory in which the labels file is found.
-    filename: The filename where the class names are written.
-  Returns:
-    A map from a label (integer) to class name.
-  """
-  labels_filename = os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_"+filename)
-  with tf.gfile.Open(labels_filename, 'rb') as f:
+  with tf.gfile.Open(filename, 'rb') as f:
     lines = f.read().decode()
   lines = lines.split('\n')
   lines = filter(None, lines)
-
-  labels_to_class_names = {}
+  data = {}
   for line in lines:
     index = line.index(':')
-    labels_to_class_names[int(line[:index])] = line[index+1:]
-  return labels_to_class_names
+    data[int(line[:index+1])] = line[index:]
+  return data
 
-
-def write_datanum_file(data_num_dict, dataset_dir,
-                     filename=DATA_NUMNAME):
-  """Writes a file with the list of class names.
-  Args:
-    labels_to_class_names: A map of (integer) labels to class names.
-    dataset_dir: The directory in which the labels file should be written.
-    filename: The filename where the class names are written.
-  """
-  datanum_filename = os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_" + filename)
-  with tf.gfile.Open(datanum_filename, 'w') as f:
-    for split_name in data_num_dict.keys():
-      data_num = data_num_dict[split_name]
-      f.write('%s:%d\n' % (split_name, data_num))
-
-
-def has_datanum(dataset_dir, filename=DATA_NUMNAME):
-  """Specifies whether or not the dataset directory contains a label map file.
-  Args:
-    dataset_dir: The directory in which the labels file is found.
-    filename: The filename where the class names are written.
-  Returns:
-    `True` if the labels file exists and `False` otherwise.
-  """
-  return tf.gfile.Exists(os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_"+filename))
-
-
-def read_datanum_file(dataset_dir, filename=DATA_NUMNAME):
-  """Reads the labels file and returns a mapping from ID to class name.
-  Args:
-    dataset_dir: The directory in which the labels file is found.
-    filename: The filename where the class names are written.
-  Returns:
-    A map from a label (integer) to class name.
-  """
-  datanum_filename = os.path.join(dataset_dir, dataset_dir.split('/')[-1]+"_"+filename)
-  with tf.gfile.Open(datanum_filename, 'rb') as f:
-    lines = f.read().decode()
-  lines = lines.split('\n')
-  lines = filter(None, lines)
-
-  data_to_num = {}
-  for line in lines:
-    index = line.index(':')
-    data_to_num[line[:index]] = int(line[index+1:])
-  return data_to_num
