@@ -3,8 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import random
 
-from datasets import convert_floder_data
+from datasets import dataset_utils
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -17,37 +18,47 @@ tf.app.flags.DEFINE_string('tfrecord_dir', None, 'tfrecord文件的保存路径'
 
 
 def main(_):
-  assert split_name in ['train', 'validation', 'test']
-  num_per_shard = int(math.ceil(len(filenames) / float(num_shares)))
-  with tf.Graph().as_default():
-    decode_jpeg_data = tf.placeholder(dtype=tf.string)
-    decode_jpeg = tf.image.decode_jpeg(decode_jpeg_data, channels=3)
-    with tf.Session('') as sess:
-      for shard_id in range(num_shares):
-        data_name = tfrecord_dir.split('/')[-1]
-        output_filename = '%s_%s_%05d-of-%05d.tfrecord' % (data_name, split_name, shard_id, num_shares)
-        output_filename = os.path.join(tfrecord_dir, output_filename)
-        with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-          start_ndx = shard_id * num_per_shard
-          end_ndx = min((shard_id+1) * num_per_shard, len(filenames))
-          for i in range(start_ndx, end_ndx):
-            sys.stdout.write('\r>> Converting image %d/%d shard %d' % (i+1, len(filenames), shard_id))
-            sys.stdout.flush()
+  if not tf.gfile.Exists(FLAGS.tfrecord_dir):
+    tf.gfile.MakeDirs(FLAGS.tfrecord_dir)
+  photo_filenames, class_names = get_filenames_and_classes(FLAGS.dataset_dir)
+  class_names_to_ids = dict(zip(class_names, range(len(class_names))))
+  data_len = len(photo_filenames)
+  test_num = int(data_len * FLAGS.test_dp)
+  print(test_num)
+  validation_num = int((data_len - test_num) * FLAGS.val_dp)
+  num_share_dict ={'train': data_len-test_num-validation_num,
+                   'validation': validation_num,
+                   'test': test_num}
 
-            # Read the filename:
-            image_data = tf.gfile.FastGFile(filenames[i], 'rb').read()
-            image = sess.run(decode_jpeg, feed_dict={decode_jpeg_data: image_data})
-            height, width = image.shape[0], image.shape[1]
+  if dataset_exists(FLAGS.tfrecord_dir, num_share_dict, FLAGS.split_num):
+    print('tfrecord数据集已存在，不再重复创建！')
+    return
 
-            class_name = os.path.basename(os.path.dirname(filenames[i]))
-            class_id = class_names_to_ids[class_name]
+  # 划分数据集为训练集，验证集，测试集
+  random.seed(0)
+  random.shuffle(photo_filenames)
+  test_filenames = photo_filenames[:test_num]
+  validation_filenames = photo_filenames[test_num:test_num+validation_num]
+  training_filenames = photo_filenames[test_num + validation_num:]
 
-            example = feature_utils.image_to_tfexample(
-                image_data, b'jpg', height, width, class_id)
-            tfrecord_writer.write(example.SerializeToString())
+  # 转换数据集
+  if test_num < data_len:
+    dataset_utils.write_tfrecord('train', training_filenames, class_names_to_ids, FLAGS.tfrecord_dir,
+                     int(num_share_dict['train']/FLAGS.split_num)+1)
+    if validation_num > 0:
+      dataset_utils.write_tfrecord('validation', validation_filenames, class_names_to_ids, FLAGS.tfrecord_dir,
+                       int(num_share_dict['validation']/FLAGS.split_num)+1)
+  if test_num > 0:
+    dataset_utils.write_tfrecord('test', test_filenames, class_names_to_ids, FLAGS.tfrecord_dir,
+                     int(num_share_dict['test']/FLAGS.split_num)+1)
 
-  sys.stdout.write('\n')
-  sys.stdout.flush()
+  # 创建标签文件
+  labels_to_class_names = dict(zip(range(len(class_names)), class_names))
+  dataset_utils.write_txtfile(labels_to_class_names, FLAGS.tfrecord_dir)
+
+  #创建数据集数量说明文件
+  dataset_utils.write_txtfile(num_share_dict, FLAGS.tfrecord_dir)
+  print('\ntfrecord数据集转换完成!')
 
 
 if __name__ == '__main__':
