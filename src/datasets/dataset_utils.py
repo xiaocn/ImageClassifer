@@ -17,7 +17,6 @@ import tensorflow as tf
 from tensorflow.contrib import slim
 import sys
 import math
-import os
 
 # 导入自定义模块
 from datasets import dataset_features as features
@@ -112,16 +111,15 @@ def get_dataset(record_dir, split_name, dataset, reader=tf.TFRecordReader):
     :param record_dir: record文件所在的路径
     :param split_name: 划分集名称
     :param dataset: 数据集对象
-    :param reader: 读数据的对象
+    :param reader: 数据集的读取对象
     :return: 返回Dataset对象
     """
     record_file, label_file, num_file = features.get_file_name(record_dir, split_name)
     label_name_dict = features.read_dict_data(label_file)
     split_name_dict = features.read_dict_data(num_file)
-    item_desc_dict = dataset.get_dataset_desc()
-    decoder = slim.tfexample_decoder.TFExampleDecoder(features.keys_feature, features.items_handlers)
+    decoder = slim.tfexample_decoder.TFExampleDecoder(features.keys_to_feature(), features.items_to_handlers())
     return slim.dataset.Dataset(data_sources=record_file, reader=reader, decoder=decoder,
                                 num_samples=split_name_dict[split_name],
-                                items_to_descriptions=item_desc_dict,
+                                items_to_descriptions=dataset.dataset_desc_dict,
                                 num_classes=len(label_name_dict),
                                 labels_to_names=label_name_dict)

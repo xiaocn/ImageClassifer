@@ -18,16 +18,29 @@ from tensorflow.contrib import slim
 import os
 
 
-items_handlers = {  # 数据集需要处理的选项，一般为图像数据及标签
-    'image': slim.tfexample_decoder.Image(),
-    'label': slim.tfexample_decoder.Tensor('image/class/label'),
-}
+def items_to_handlers():
+    """
+    数据集需要处理的选项，一般为图像数据及标签
+    :return: 返回数据集处理的选项
+    """
+    items_handlers = {
+        'image': slim.tfexample_decoder.Image(),
+        'label': slim.tfexample_decoder.Tensor('image/class/label'),
+    }
+    return items_handlers
 
-keys_feature = {  # record文件的关键子解码器
-    'image/encoded': tf.FixedLenFeature((), tf.string, default_value=''),
-    'image/format': tf.FixedLenFeature((), tf.string, default_value='png'),
-    'image/class/label': tf.FixedLenFeature([], tf.int64, default_value=tf.zeros([], dtype=tf.int64)),
-}
+
+def keys_to_feature():
+    """
+    record文件的关键子解码器
+    :return: 返回选项解码器
+    """
+    keys_feature = {
+        'image/encoded': tf.FixedLenFeature((), tf.string, default_value=''),
+        'image/format': tf.FixedLenFeature((), tf.string, default_value='png'),
+        'image/class/label': tf.FixedLenFeature([], tf.int64, default_value=tf.zeros([], dtype=tf.int64)),
+    }
+    return keys_feature
 
 
 def image_to_example(image_data, image_format, height, width, class_id):
