@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from datasets import dataset_factory
+import factory
 from deployment import model_deploy
 from nets import nets_factory
 from preprocessing import preprocessing_factory
@@ -375,7 +375,7 @@ def main(_):
     ######################
     # Select the dataset #
     ######################
-    dataset = dataset_factory.get_dataset(
+    dataset = factory.get_dataset(
         FLAGS.dataset_name, FLAGS.dataset_split_name, FLAGS.dataset_dir)
 
     ######################

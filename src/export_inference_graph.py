@@ -5,7 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.python.platform import gfile
-from datasets import dataset_factory
+import factory
 from nets import nets_factory
 
 
@@ -50,8 +50,8 @@ def main(_):
     raise ValueError('You must supply the path to save to with --output_file')
   tf.logging.set_verbosity(tf.logging.INFO)
   with tf.Graph().as_default() as graph:
-    dataset = dataset_factory.get_dataset(FLAGS.dataset_name, 'train',
-                                          FLAGS.dataset_dir)
+    dataset = factory.get_dataset(FLAGS.dataset_name, 'train',
+                                  FLAGS.dataset_dir)
     network_fn = nets_factory.get_network_fn(
         FLAGS.model_name,
         num_classes=(dataset.num_classes - FLAGS.labels_offset),

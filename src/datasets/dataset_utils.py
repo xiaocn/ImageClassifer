@@ -1,112 +1,127 @@
+#!/bin/usr/python3
+# -*- coding: UTF-8 -*-
+
+"""
+模块说明： 主要实现创建数据集或读取数据集的一些工具
+作者： xiao
+时间： 2018.12.23
+"""
+
+# 导入future模块
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
+# 导入系统模块
+import tensorflow as tf
+from tensorflow.contrib import slim
 import sys
 import math
+import os
 
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
-
-from datasets import feature_utils
-
-
-def get_file_name(tfrecord_dir, split_name, shard_id=-1, shard_num=-1):
-  data_name = tfrecord_dir.split('/')[-1]
-  label_file = os.path.join(tfrecord_dir, "%s_labels.txt" % data_name)
-  num_file = os.path.join(tfrecord_dir, "%s_num.txt" % data_name)
-  tfrecord_file = os.path.join(tfrecord_dir, "%s_%s_*.tfrecord" % (data_name, split_name))
-  if shard_num > 0:
-    tfrecord_file = os.path.join(tfrecord_dir, "%s_%s_%05d-of-%05d.tfrecord" %
-                                 (data_name, split_name, shard_id, shard_num))
-  return tfrecord_file,label_file,num_file
+# 导入自定义模块
+from datasets import dataset_features as features
 
 
-def write_tfrecord(split_name, filenames, class_names_to_ids, tfrecord_dir, num_shares):
-  """
-  转换tfrecord数据集
-  :param split_name: 划分名称，分别为test,validation,train三类
-  :param filenames: 数据集文件名列表
-  :param class_names_to_ids: 标签对应的下标
-  :param tfrecord_dir: tfrecord文件的保存目录
-  :param num_shares: tfrecord文件的数量
-  :return: 无返回
-  """
-  assert split_name in ['train', 'validation', 'test']
-  num_per_shard = int(math.ceil(len(filenames) / float(num_shares)))
-  with tf.Graph().as_default():
-    decode_jpeg_data = tf.placeholder(dtype=tf.string)
-    decode_jpeg = tf.image.decode_jpeg(decode_jpeg_data, channels=3)
-    with tf.Session('') as sess:
-      for shard_id in range(num_shares):
-        data_name = tfrecord_dir.split('/')[-1]
-        output_filename = '%s_%s_%05d-of-%05d.tfrecord' % (data_name, split_name, shard_id, num_shares)
-        output_filename = os.path.join(tfrecord_dir, output_filename)
-        with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-          start_ndx = shard_id * num_per_shard
-          end_ndx = min((shard_id+1) * num_per_shard, len(filenames))
-          for i in range(start_ndx, end_ndx):
-            sys.stdout.write('\r>> Converting image %d/%d shard %d' % (i+1, len(filenames), shard_id))
-            sys.stdout.flush()
-            image_data = tf.gfile.FastGFile(filenames[i], 'rb').read()
-            image = sess.run(decode_jpeg, feed_dict={decode_jpeg_data: image_data})
-            height, width = image.shape[0], image.shape[1]
-            class_name = os.path.basename(os.path.dirname(filenames[i]))
-            class_id = class_names_to_ids[class_name]
-            example = feature_utils.image_to_tfexample(
-                image_data, b'jpg', height, width, class_id)
-            tfrecord_writer.write(example.SerializeToString())
-  sys.stdout.write('\n')
-  sys.stdout.flush()
+def dataset_exists(record_dir, filename_dict, num_per_shard, class_names_to_ids):
+    """
+    判断record数据集是否存在
+    :param record_dir: record数据集的根目录
+    :param filename_dict: 划分集字典
+    :param num_per_shard: 每个record文件所含数据的数量
+    :param class_names_to_ids 标签名称下标字典
+    :return: True-数据集文件已存在 False-不存在某些数据集文件
+    """
+    num_shard_dict = {}
+    for split_name in filename_dict:
+        num_shard_dict[split_name] = len(filename_dict[split_name])
+        num_shard = math.ceil(num_shard_dict[split_name] / num_per_shard)
+        for shard_id in range(num_shard):
+            if not tf.gfile.Exists(
+                    features.get_file_name(record_dir, split_name, num_shard=num_shard, shard_id=shard_id)):
+                return False
+    label_file, num_file = features.get_file_name(record_dir)
+    if not tf.gfile.Exists(label_file):
+        features.create_dict_file(class_names_to_ids, label_file)
+    if not tf.gfile.Exists(num_file):
+        features.create_dict_file(num_shard_dict, num_file)
+    return True
 
 
-def read_tfrecord(tfrecord_dir, split_name, reader=tf.TFRecordReader):
-  tfrecord_file, label_file, num_file = get_file_name(tfrecord_dir,split_name)
-  if not (tf.gfile.Exists(num_file) and tf.gfile.Exists(label_file)):
-    raise ValueError("%s没有缺失标签文件或样本数量说明文件" % tfrecord_dir)
-  label_name_dict = read_txtfile(label_file)
-  split_name_dict = read_txtfile(num_file)
-  item_desc_dict = feature_utils.items_to_desc(split_name_dict)
-  keys_to_features = feature_utils.keys_to_features()
-  items_to_handlers = feature_utils.items_to_handlers()
-  decoder = slim.tfexample_decoder.TFExampleDecoder(keys_to_features, items_to_handlers)
-  return slim.dataset.Dataset(
-      data_sources=tfrecord_file,
-      reader=reader,
-      decoder=decoder,
-      num_samples=split_name_dict[split_name],
-      items_to_descriptions=item_desc_dict,
-      num_classes=len(label_name_dict),
-      labels_to_names=label_name_dict)
+def get_data_partition(filename_list, test_dp=0.1, val_dp=0.1):
+    """
+    根据各个划分集比例划分数据集
+    :param filename_list: 已随机化的所有数据集的文件列表
+    :param test_dp: 测试集占整个数据集的比例
+    :param val_dp: 验证集占训练集的比例
+    :return: 返回各个已划分好的数据集字典
+    """
+    assert 0 <= test_dp < 1 and 0 <= val_dp < 1
+    dataset_len = len(filename_list)
+    filename_dict = {}
+    split_name_dict = features.get_split_name(test_dp=test_dp, val_dp=val_dp)
+    start = 0
+    for split_name in split_name_dict:
+        data_num = math.ceil(dataset_len * split_name_dict[split_name])
+        filename_dict[split_name] = filename_list[start:(data_num + start)]
+        start = data_num
+    return filename_dict
 
 
-def write_txtfile(data, filename):
-  """
-  将标签数据或其他数据写入文本文件
-  :param data: 要写入文件的数据
-  :param filename: 文件输出路径（含文件名）
-  :return: 无返回值
-  """
-  with tf.gfile.Open(filename, 'w') as f:
-    for i in data:
-      item = data[i]
-      f.write('%s:%d\n' % (item, i))
+def create_dataset(dataset, record_dir, filename_dict, class_names_to_ids, num_per_shard=1000):
+    """
+    创建数据集
+    :param dataset: 具体数据集对象
+    :param record_dir: 生成的record文件的保存路径
+    :param filename_dict: 划分集字典
+    :param class_names_to_ids: 标签字典
+    :param num_per_shard: 每个record文件的容纳数据的数量
+    :return: 无返回值
+    """
+    assert num_per_shard > 0
+    if not tf.gfile.Exists(record_dir):
+        tf.gfile.MakeDirs(record_dir)
+    num_shard_dict = {}
+    for split_name in filename_dict:
+        filenames = filename_dict[split_name]
+        num_shard_dict[split_name] = len(filenames)
+        num_shard = math.ceil(num_shard_dict[split_name] / num_per_shard)
+        for shard_id in range(num_shard):
+            output_filename = features.get_file_name(record_dir, split_name, shard_id=shard_id, num_shard=num_shard)
+            with tf.python_io.TFRecordWriter(output_filename) as record_writer:
+                start_ndx = shard_id * num_per_shard
+                end_ndx = min((shard_id + 1) * num_per_shard, len(filenames))
+                for i in range(start_ndx, end_ndx):
+                    sys.stdout.write('\r>> 正在装换%s数据集图像 %d/%d shard %d' %
+                                     (split_name, i + 1, len(filenames), shard_id))
+                    sys.stdout.flush()
+                    image_data, height, width, class_id = dataset.get_image_and_label(filenames, class_names_to_ids, i)
+                    example = features.image_to_example(image_data, b'jpg', height, width, class_id)
+                    record_writer.write(example.SerializeToString())
+        sys.stdout.write('\n')
+        sys.stdout.flush()
+    label_file, num_file = features.get_file_name(record_dir)
+    features.create_dict_file(num_shard_dict, num_file)
+    features.create_dict_file(class_names_to_ids, label_file)
+    print("数据集创建完毕！，详情请到目录%s下查看" % record_dir)
 
 
-def read_txtfile(filename):
-  """
-  读取文本文件
-  :param filename: 文件名（含路径）
-  :return: 返回以分割符分开的数据字典
-  """
-  with tf.gfile.Open(filename, 'rb') as f:
-    lines = f.read().decode()
-  lines = lines.split('\n')
-  lines = filter(None, lines)
-  data = {}
-  for line in lines:
-    index = line.index(':')
-    data[int(line[:index+1])] = line[index:]
-  return data
-
+def get_dataset(record_dir, split_name, dataset, reader=tf.TFRecordReader):
+    """
+    读取record数据集
+    :param record_dir: record文件所在的路径
+    :param split_name: 划分集名称
+    :param dataset: 数据集对象
+    :param reader: 读数据的对象
+    :return: 返回Dataset对象
+    """
+    record_file, label_file, num_file = features.get_file_name(record_dir, split_name)
+    label_name_dict = features.read_dict_data(label_file)
+    split_name_dict = features.read_dict_data(num_file)
+    item_desc_dict = dataset.get_dataset_desc()
+    decoder = slim.tfexample_decoder.TFExampleDecoder(features.keys_feature, features.items_handlers)
+    return slim.dataset.Dataset(data_sources=record_file, reader=reader, decoder=decoder,
+                                num_samples=split_name_dict[split_name],
+                                items_to_descriptions=item_desc_dict,
+                                num_classes=len(label_name_dict),
+                                labels_to_names=label_name_dict)
