@@ -6,9 +6,9 @@ import tensorflow as tf
 
 import factory
 from deployment import model_deploy
-from nets import nets_factory
-from preprocessing import preprocessing_factory
-from datasets import dataset_utils as utils
+from net import nets_factory
+from preprocess import preprocessing_factory
+from dataset import dataset_utils as utils
 
 slim = tf.contrib.slim
 
@@ -168,7 +168,7 @@ tf.app.flags.DEFINE_string(
     'model_name', 'inception_v3', 'The name of the architecture to train.')
 
 tf.app.flags.DEFINE_string(
-    'preprocessing_name', None, 'The name of the preprocessing to use. If left '
+    'preprocessing_name', None, 'The name of the preprocess to use. If left '
                                 'as `None`, then the model_name flag is used.')
 
 tf.app.flags.DEFINE_integer(
@@ -388,7 +388,7 @@ def main(_):
             is_training=True)
 
         #####################################
-        # Select the preprocessing function #
+        # Select the preprocess function #
         #####################################
         preprocessing_name = FLAGS.preprocessing_name or FLAGS.model_name
         image_preprocessing_fn = preprocessing_factory.get_preprocessing(

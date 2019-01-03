@@ -7,8 +7,8 @@ import functools
 
 import tensorflow as tf
 
-from nets.mobilenet import conv_blocks as ops
-from nets.mobilenet import mobilenet as lib
+from net.mobilenet import conv_blocks as ops
+from net.mobilenet import mobilenet as lib
 
 slim = tf.contrib.slim
 op = lib.op

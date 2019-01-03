@@ -5,7 +5,7 @@ from __future__ import print_function
 import copy
 import tensorflow as tf
 
-from nets.nasnet import nasnet_utils
+from net.nasnet import nasnet_utils
 
 arg_scope = tf.contrib.framework.arg_scope
 slim = tf.contrib.slim
@@ -198,7 +198,7 @@ def nasnet_large_arg_scope(weight_decay=5e-5,
 
 
 def _build_aux_head(net, end_points, num_classes, hparams, scope):
-  """Auxiliary head used for all models across all datasets."""
+  """Auxiliary head used for all models across all dataset."""
   with tf.variable_scope(scope):
     aux_logits = tf.identity(net)
     with tf.variable_scope('aux_logits'):

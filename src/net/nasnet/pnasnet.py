@@ -5,8 +5,8 @@ from __future__ import print_function
 import copy
 import tensorflow as tf
 
-from nets.nasnet import nasnet
-from nets.nasnet import nasnet_utils
+from net.nasnet import nasnet
+from net.nasnet import nasnet_utils
 
 arg_scope = tf.contrib.framework.arg_scope
 slim = tf.contrib.slim

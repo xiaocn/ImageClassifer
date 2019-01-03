@@ -11,9 +11,9 @@ def preprocess_image(image, output_height, output_width, is_training):
   """Preprocesses the given image.
   Args:
     image: A `Tensor` representing an image of arbitrary size.
-    output_height: The height of the image after preprocessing.
-    output_width: The width of the image after preprocessing.
-    is_training: `True` if we're preprocessing the image for training and
+    output_height: The height of the image after preprocess.
+    output_width: The width of the image after preprocess.
+    is_training: `True` if we're preprocess the image for training and
       `False` otherwise.
   Returns:
     A preprocessed image.

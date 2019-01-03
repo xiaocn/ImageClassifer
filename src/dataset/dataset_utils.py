@@ -19,7 +19,7 @@ import sys
 import math
 
 # 导入自定义模块
-from datasets import dataset_features as features
+from dataset import dataset_features as features
 
 
 def dataset_exists(record_dir, filename_dict, num_per_shard, class_names_to_ids):

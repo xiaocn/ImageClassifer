@@ -17,7 +17,7 @@ import tensorflow as tf
 
 # 导入自定义模块
 import factory as factory
-from datasets import dataset_utils as utils
+from dataset import dataset_utils as utils
 
 # 定义命令行参数
 tf.flags.DEFINE_string('dataset_dir', None, "原始数据集的根目录")

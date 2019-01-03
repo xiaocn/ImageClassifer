@@ -4,10 +4,10 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from preprocessing import cifarnet_preprocessing
-from preprocessing import inception_preprocessing
-from preprocessing import lenet_preprocessing
-from preprocessing import vgg_preprocessing
+from preprocess import cifarnet_preprocessing
+from preprocess import inception_preprocessing
+from preprocess import lenet_preprocessing
+from preprocess import vgg_preprocessing
 
 slim = tf.contrib.slim
 
@@ -15,11 +15,11 @@ slim = tf.contrib.slim
 def get_preprocessing(name, is_training=False):
   """Returns preprocessing_fn(image, height, width, **kwargs).
   Args:
-    name: The name of the preprocessing function.
+    name: The name of the preprocess function.
     is_training: `True` if the model is being used for training and `False`
       otherwise.
   Returns:
-    preprocessing_fn: A function that preprocessing a single image (pre-batch).
+    preprocessing_fn: A function that preprocess a single image (pre-batch).
       It has the following signature:
         image = preprocessing_fn(image, output_height, output_width, ...).
   Raises:

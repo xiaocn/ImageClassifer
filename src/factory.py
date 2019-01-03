@@ -13,8 +13,8 @@ from __future__ import division
 from __future__ import print_function
 
 # 导入自定义模块
-from datasets import folder_dataset as folder
-from datasets import mnist_dataset as mnist
+from dataset import folder_dataset as folder
+from dataset import mnist_dataset as mnist
 
 
 dataset_map = {

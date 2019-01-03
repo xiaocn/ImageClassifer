@@ -6,8 +6,8 @@ import math
 import tensorflow as tf
 
 import factory
-from nets import nets_factory
-from preprocessing import preprocessing_factory
+from net import nets_factory
+from preprocess import preprocessing_factory
 
 slim = tf.contrib.slim
 
@@ -52,7 +52,7 @@ tf.app.flags.DEFINE_string(
     'model_name', 'inception_v3', 'The name of the architecture to evaluate.')
 
 tf.app.flags.DEFINE_string(
-    'preprocessing_name', None, 'The name of the preprocessing to use. If left '
+    'preprocessing_name', None, 'The name of the preprocess to use. If left '
     'as `None`, then the model_name flag is used.')
 
 tf.app.flags.DEFINE_float(
@@ -100,7 +100,7 @@ def main(_):
     label -= FLAGS.labels_offset
 
     #####################################
-    # Select the preprocessing function #
+    # Select the preprocess function #
     #####################################
     preprocessing_name = FLAGS.preprocessing_name or FLAGS.model_name
     image_preprocessing_fn = preprocessing_factory.get_preprocessing(

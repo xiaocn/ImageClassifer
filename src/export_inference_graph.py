@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from tensorflow.python.platform import gfile
 import factory
-from nets import nets_factory
+from net import nets_factory
 
 
 slim = tf.contrib.slim
