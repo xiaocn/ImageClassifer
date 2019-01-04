@@ -14,137 +14,131 @@ from __future__ import division
 
 # 导入系统模块
 import tensorflow as tf
-from matplotlib import pyplot as plt
-from PIL import Image
+from tensorflow.contrib import slim
 import os
-import numpy as np
-from tensorflow.examples.tutorials.mnist import input_data
-
-#导入自定义库
-import net
-
-# 定义命令行参数
-tf.flags.DEFINE_string('record_dir', None, "生成record文件的保存目录")
-tf.flags.DEFINE_string('image_dir', None, "图像保存的路径")
-tf.flags.DEFINE_string('split_name', 'train', "划分集名称，分为test，val，train三个")
-tf.flags.DEFINE_integer('train_step', 100, "生成图像的数量")
-tf.flags.DEFINE_float('learning_rate', 0.001, "学习率")
-FLAGS = tf.flags.FLAGS
+import input_data
+import mobilenet_v1
+import tools
 
 
-def distort_color(image, color_ordering=0):
-    if color_ordering == 0:
-        image = tf.image.random_brightness(image, max_delta=32. / 255.)
-        image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-        image = tf.image.random_hue(image, max_delta=0.2)
-        image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-    elif color_ordering == 1:
-        image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-        image = tf.image.random_brightness(image, max_delta=32. / 255.)
-        image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-        image = tf.image.random_hue(image, max_delta=0.2)
-    else:
-        image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-        image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-        image = tf.image.random_hue(image, max_delta=0.2)
-        image = tf.image.random_brightness(image, max_delta=32. / 255.)
-    return tf.clip_by_value(image, 0.0, 1.0)
+batch_size = 64
+num_classes = 2
+checkpoint_path = ''
+
+learning_rate = 0.001
+training_steps = 3000
+
+learning_rate_base = 0.001
+decay_steps = 1000 // batch_size
+decay_rate = 0.99
+
+MODEL_NAME = 'model.ckpt'
+
+LOG_TRAIN_PATH = 'log/train'
+LOG_VAL_PATH = 'log/val'
 
 
-def preprocess_for_train(image, height, width, bbox):
-    if bbox is None:
-        bbox = tf.constant([0.0, 0.0, 1.0, 1.0], dtype=tf.float32, shape=[1, 1, 4])
-    if image.dtype != tf.float32:
-        image = tf.image.convert_image_dtype(image, dtype=tf.float32)
-    bbox_begin, bbox_size, _ = tf.image.sample_distorted_bounding_box(tf.shape(image), bounding_boxes=bbox)
-    distorted_image = tf.slice(image, bbox_begin, bbox_size)
-    distorted_image = tf.image.resize_images(distorted_image, (height, width), method=np.random.randint(4))
-
-    distorted_image = tf.image.random_flip_left_right(distorted_image)
-    distorted_image = distort_color(distorted_image, np.random.randint(3))
-    return distorted_image
+def network_inference(images, num_classes, arg_scope, func, is_training=True, dropout_keep_prob=0.8):
+    with slim.arg_scope(arg_scope):
+        return func(images, num_classes, is_training=is_training, dropout_keep_prob=dropout_keep_prob)
 
 
-def main(_):
-    """
-    用法说明： python3 convert_to_record.py \
-                    --record_dir=<record_path> \
-                    --image_dir=<image_path> \
-                    [ --split_name=train \
-                     --train_step=100
-                    ]
-        参数说名： record_dir —— 生成record文件的保存目录
-                 image_dir —— 图像保存的路径
-                 split_name —— 划分集合的名称，总共为三个：test，val，train，默认值为train
-                 num —— 生成数据集的数量，默认值为100
-            注： 中括号表示可选参数，等号后为默认值
-    """
-    """""
-    record_file = os.path.join(FLAGS.record_dir, '%s_*.record' % FLAGS.split_name)
-    files = tf.gfile.Glob(record_file)
-    filename_queue = tf.train.string_input_producer(files, shuffle=True)
-    reader = tf.TFRecordReader()
-    _, serialized_example = reader.read(filename_queue)
-    single_example = tf.parse_single_example(serialized_example, {
-        'image': tf.FixedLenFeature((), tf.string, default_value=''),
-        'label': tf.FixedLenFeature([], tf.int64, default_value=tf.zeros([], dtype=tf.int64)),
-        'height': tf.FixedLenFeature([], tf.int64),
-        'width': tf.FixedLenFeature([], tf.int64),
-    })
-    image = tf.decode_raw(single_example['image'], tf.uint8)
-    height = tf.cast(single_example['height'], tf.int32)
-    width = tf.cast(single_example['width'], tf.int32)
-    channel = 3
-    label = tf.cast(single_example['label'], tf.int32)
-    image = tf.reshape(image, [height, width, channel])
-
-    boxes = tf.constant([[[0.05, 0.05, 0.9, 0.7], [0.35, 0.47, 0.5, 0.56]]])
-    image_size = 300
-    distort_image = preprocess_for_train(image, image_size, image_size, boxes)
-    
-    min_after_dequeue = 10000
-    batch_size = 100
-    capacity = min_after_dequeue + 3 * batch_size
-    image_batch, label_batch = tf.train.shuffle_batch([distort_image, label], batch_size=batch_size,
-                                                      capacity=capacity, min_after_dequeue=min_after_dequeue)
-    """
-    mnist = input_data.read_data_sets('/ai/workrooms/datasets/org-img/bak', one_hot=True)
-    x = tf.placeholder(tf.float32, [None, 784], name='x-input')
-    y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
-    regularizer = tf.contrib.layers.l2_regularizer(0.0001)
-    logit = net.inference(x, regularizer)
-    global_step = tf.Variable(0, trainable=False)
-    variable_averages = tf.train.ExponentialMovingAverage(0.99, global_step)
-    variable_averages_op = variable_averages.apply(tf.trainable_variables())
-    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logit, labels=tf.argmax(y_, 1))
-    cross_entropy_mean = tf.reduce_mean(cross_entropy)
-    loss = cross_entropy_mean + tf.add_n(tf.get_collection('losses'))
-    learning_rate = tf.train.exponential_decay(0.8, global_step, mnist.train.num_examples/100, 0.99)
-    train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, global_step=global_step)
-    with tf.control_dependencies([train_step, variable_averages_op]):
-        train_op = tf.no_op(name='train')
-    saver = tf.train.Saver()
-    with tf.Session() as sess:
-        init_op = tf.global_variables_initializer()
-        sess.run(init_op)
-        #coord = tf.train.Coordinator()
-        #threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
-        for i in range(60000):
-            xs, ys = mnist.train.next_batch(100)
-            _, loss_value, step = sess.run([train_op, loss, global_step], feed_dict={x: xs, y_: ys})
-            if i % 1000 == 0:
-                print("after %d training step, loss is %g" % (step, loss_value))
-                saver.save(sess, '/ai/workrooms/datasets/test/model/model.ckpt', global_step=i)
-            #result = preprocess_for_train(image, 300, 300, boxes)
-            #plt.imshow(result.eval())
-            #plt.show()
-            #single, l = sess.run([result, label])
-            #img = Image.fromarray(single, 'RGB')
-            #img.save(os.path.join(FLAGS.image_dir, '%d-label-%d.jpg' % (i, l)))
-        #coord.request_stop()
-        #coord.join(threads)
+def get_variables_to_restore(exclusions):
+    variables_to_restore = []
+    for var in slim.get_model_variables():
+        var_name = var.op.name
+        excluded = False
+        for exclusion in exclusions:
+            if var_name.startswith(exclusion):
+                excluded = True
+        if not excluded:
+            variables_to_restore.append(var)
+    return variables_to_restore
 
 
-if __name__ == '__main__':
-    tf.app.run()
+def get_variables_to_train(trainable_scopes):
+    variables_to_train = []
+    for scope in trainable_scopes:
+        variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
+        variables_to_train.append(variables)
+    return variables_to_train
+
+
+def train(dataset_dir, model_save_path):
+    if not tf.gfile.Exists(model_save_path):
+        tf.gfile.MakeDirs(model_save_path)
+    with tf.Graph().as_default():
+        tfrecords_map_train, tfrecords_map_validation = input_data.get_tfrecords_map(dataset_dir)
+        image_batch, label_batch = input_data.read_and_decode_mux(tfrecords_map_train, batch_size)
+        val_image_batch, val_label_batch = input_data.read_and_decode_mux(tfrecords_map_validation, batch_size,
+                                                                          is_training=False)
+        images = tf.placeholder(tf.float32, [None, 224, 224, 3], name='x-input')
+        labels = tf.placeholder(tf.float32, [None, num_classes], name='y-input')
+
+        arg_scope = mobilenet_v1.mobilenet_v1_arg_scope(is_training=True, weight_decay=0.0004)
+        logits, endpoints = network_inference(images, num_classes, arg_scope, mobilenet_v1.mobilenet_v1)
+        exclusions = ['MobilenetV1/Logits']
+        variables_to_restore = get_variables_to_restore(exclusions)
+        cross_entropy = tools.cross_entropy_loss(logits=logits, labels=labels, weights_decay=1.0, name='Logits')
+        regularizer_loss = tools.regularizer_loss()
+        total_loss = tools.total_loss()
+
+        global_step = tf.Variable(0, trainable=False)
+
+        learning_rate = learning_rate_base
+
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss=total_loss,
+                                                                                    global_step=global_step)
+        predict = endpoints['Predictions']
+        accuracy = tools.accuracy(logits=predict, labels=labels)
+
+        saver = tf.train.Saver(variables_to_restore)
+        saver_last = tf.train.Saver(slim.get_model_variables(), max_to_keep=30)
+
+        with tf.Session() as sess:
+            tf.global_variables_initializer().run()
+            saver.restore(sess, checkpoint_path)
+
+            summary_op = tf.summary.merge_all()
+            train_writer = tf.summary.FileWriter(LOG_TRAIN_PATH, sess.graph)
+            val_writer = tf.summary.FileWriter(LOG_VAL_PATH, sess.graph)
+
+            i = 1
+            coord = tf.train.Coordinator()
+            threads = tf.train.start_queue_runners(coord=coord)
+
+            try:
+                while not coord.should_stop() and i <= training_steps:
+                    image_batch_value, label_batch_value = sess.run([image_batch, label_batch])
+                    if i == 1 or i % 30 == 0:
+                        summary_str = sess.run(summary_op, feed_dict={images: image_batch_value,
+                                                                      labels: label_batch_value})
+                        train_writer.add_summary(summary_str, i)
+                    _, loss_value, accuracy_value = sess.run([train_op, cross_entropy, accuracy],
+                                                             feed_dict={images:image_batch_value,
+                                                                        labels:label_batch_value})
+                    if i == 1 or i % 10 == 0:
+                        print(i, 'loss:', loss_value, ', accuracy:', accuracy_value*100, '%')
+                    if i == 1 or i % 50 == 0:
+                        val_image_batch_value, val_label_batch_value = sess.run([val_image_batch,val_label_batch])
+                        loss_value, accuracy_value = sess.run([cross_entropy, accuracy_value], feed_dict={
+                            images: val_image_batch_value,
+                            labels: val_label_batch_value
+                        })
+                        print(i, 'val loss:', loss_value, ', accuracy:', accuracy_value*100, '%')
+                        summary_str = sess.run(summary_op, feed_dict={images: val_image_batch_value,
+                                                                      labels: val_label_batch_value})
+                        val_writer.add_summary(summary_str, i)
+                    if i % 100 == 0:
+                        saver_last.save(sess, os.path.join(model_save_path, MODEL_NAME), global_step=i)
+                    i += 1
+            except tf.errors.OutOfRangeError:
+                print('done!')
+            finally:
+                coord.request_stop()
+            coord.join(threads)
+
+
+
