@@ -18,6 +18,10 @@ from matplotlib import pyplot as plt
 from PIL import Image
 import os
 import numpy as np
+from tensorflow.examples.tutorials.mnist import input_data
+
+#导入自定义库
+import net
 
 # 定义命令行参数
 tf.flags.DEFINE_string('record_dir', None, "生成record文件的保存目录")
@@ -61,25 +65,6 @@ def preprocess_for_train(image, height, width, bbox):
     return distorted_image
 
 
-def get_weight_variable(shape, regularizer):
-    weights = tf.get_variable('weights', shape, initializer=tf.truncated_normal_initializer(stddev=0.1))
-    if regularizer is not None:
-        tf.add_to_collection('losses', regularizer(weights))
-    return weights
-
-
-def inference(image_batch, regularizer):
-    with tf.variable_scope('layer1'):
-        weights = get_weight_variable([784, 500], regularizer)
-        biases = tf.get_variable('biases', [500], initializer=tf.constant_initializer(0.0))
-        layer1 = tf.nn.relu(tf.matmul(image_batch, weights) + biases)
-    with tf.variable_scope('layer2'):
-        weights = get_weight_variable([500, 5], regularizer)
-        biases = tf.get_variable('biases', [5], initializer=tf.constant_initializer(0.0))
-        layer2 = tf.nn.relu(tf.matmul(layer1, weights) + biases)
-    return layer2
-
-
 def main(_):
     """
     用法说明： python3 convert_to_record.py \
@@ -94,6 +79,7 @@ def main(_):
                  num —— 生成数据集的数量，默认值为100
             注： 中括号表示可选参数，等号后为默认值
     """
+    """""
     record_file = os.path.join(FLAGS.record_dir, '%s_*.record' % FLAGS.split_name)
     files = tf.gfile.Glob(record_file)
     filename_queue = tf.train.string_input_producer(files, shuffle=True)
@@ -111,32 +97,53 @@ def main(_):
     channel = 3
     label = tf.cast(single_example['label'], tf.int32)
     image = tf.reshape(image, [height, width, channel])
+
     boxes = tf.constant([[[0.05, 0.05, 0.9, 0.7], [0.35, 0.47, 0.5, 0.56]]])
     image_size = 300
     distort_image = preprocess_for_train(image, image_size, image_size, boxes)
+    
     min_after_dequeue = 10000
     batch_size = 100
     capacity = min_after_dequeue + 3 * batch_size
     image_batch, label_batch = tf.train.shuffle_batch([distort_image, label], batch_size=batch_size,
                                                       capacity=capacity, min_after_dequeue=min_after_dequeue)
-    logit = inference(image_batch)
-    loss = calc_loss(logit, label_batch)
-    train_step = tf.train.GradientDescentOptimizer(FLAGS.learning_rate).minimize(loss)
-
+    """
+    mnist = input_data.read_data_sets('/ai/workrooms/datasets/org-img/bak', one_hot=True)
+    x = tf.placeholder(tf.float32, [None, 784], name='x-input')
+    y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
+    regularizer = tf.contrib.layers.l2_regularizer(0.0001)
+    logit = net.inference(x, regularizer)
+    global_step = tf.Variable(0, trainable=False)
+    variable_averages = tf.train.ExponentialMovingAverage(0.99, global_step)
+    variable_averages_op = variable_averages.apply(tf.trainable_variables())
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logit, labels=tf.argmax(y_, 1))
+    cross_entropy_mean = tf.reduce_mean(cross_entropy)
+    loss = cross_entropy_mean + tf.add_n(tf.get_collection('losses'))
+    learning_rate = tf.train.exponential_decay(0.8, global_step, mnist.train.num_examples/100, 0.99)
+    train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, global_step=global_step)
+    with tf.control_dependencies([train_step, variable_averages_op]):
+        train_op = tf.no_op(name='train')
+    saver = tf.train.Saver()
     with tf.Session() as sess:
         init_op = tf.global_variables_initializer()
         sess.run(init_op)
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-        for i in range(FLAGS.train_step):
-            result = preprocess_for_train(image, 300, 300, boxes)
-            plt.imshow(result.eval())
-            plt.show()
-            single, l = sess.run([result, label])
-            img = Image.fromarray(single, 'RGB')
-            img.save(os.path.join(FLAGS.image_dir, '%d-label-%d.jpg' % (i, l)))
-        coord.request_stop()
-        coord.join(threads)
+        #coord = tf.train.Coordinator()
+        #threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+
+        for i in range(60000):
+            xs, ys = mnist.train.next_batch(100)
+            _, loss_value, step = sess.run([train_op, loss, global_step], feed_dict={x: xs, y_: ys})
+            if i % 1000 == 0:
+                print("after %d training step, loss is %g" % (step, loss_value))
+                saver.save(sess, '/ai/workrooms/datasets/test/model/model.ckpt', global_step=i)
+            #result = preprocess_for_train(image, 300, 300, boxes)
+            #plt.imshow(result.eval())
+            #plt.show()
+            #single, l = sess.run([result, label])
+            #img = Image.fromarray(single, 'RGB')
+            #img.save(os.path.join(FLAGS.image_dir, '%d-label-%d.jpg' % (i, l)))
+        #coord.request_stop()
+        #coord.join(threads)
 
 
 if __name__ == '__main__':
