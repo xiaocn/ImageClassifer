@@ -18,7 +18,6 @@ from tensorflow.contrib import slim
 from collections import namedtuple
 import functools
 
-
 Conv = namedtuple('Conv', ['kernel', 'stride', 'depth'])
 DepthSepConv = namedtuple('DepthSepConv', ['kernel', 'stride', 'depth'])
 
@@ -61,7 +60,7 @@ def mobilenet_v1_base(inputs, final_endpoint='Conv2d_13_pointwise', min_depth=8,
             net = inputs
             for i, conv_def in enumerate(conv_defs):
                 end_point_base = 'Conv2d_%d' % i
-                if output_stride is not  None and current_stride == output_stride:
+                if output_stride is not None and current_stride == output_stride:
                     layer_stride = 1
                     layer_rate = rate
                     rate *= conv_def.stride
@@ -102,7 +101,7 @@ def mobilenet_v1(inputs, num_classes=1000, dropout_keep_prob=0.999, is_training=
         raise ValueError('Invalid input tensor rank, expected 4, was: %d' % len(input_shape))
     with tf.variable_scope(scope, 'MobilenetV1', [inputs, num_classes], reuse=reuse) as scope:
         with slim.arg_scope([slim.batch_norm, slim.dropout], is_training=is_training):
-            net, end_points = mobilenet_v1_base(inputs,scope=scope, min_depth=min_depth,
+            net, end_points = mobilenet_v1_base(inputs, scope=scope, min_depth=min_depth,
                                                 depth_multiplier=depth_multiplier, conv_defs=conv_defs)
             with tf.variable_scope('Logits'):
                 kernel_size = _reduced_kernel_size_for_small_input(net, [7, 7])
@@ -163,4 +162,3 @@ def mobilenet_v1_arg_scope(is_training=True, weight_decay=0.00004, stddev=0.09, 
             with slim.arg_scope([slim.conv2d], weights_regularizer=regularizer):
                 with slim.arg_scope([slim.separable_conv2d], weights_regularizer=depthwise_regularizer) as sc:
                     return sc
-

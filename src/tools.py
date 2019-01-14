@@ -23,7 +23,7 @@ def cross_entropy_loss(logits, labels, weights_decay=1.0, name='cross_entropy'):
         cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy_loss')
         loss = tf.multiply(cross_entropy_mean, weights_decay)
         tf.add_to_collection('losses', loss)
-        tf.summary.scalar(scope+'/cross_entropy_loss', loss)
+        tf.summary.scalar(scope + '/cross_entropy_loss', loss)
         return loss
 
 
@@ -31,14 +31,14 @@ def regularizer_loss(name='regularizer'):
     with tf.name_scope(name) as scope:
         loss = tf.reduce_mean(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES), name='regularizer_loss')
         tf.add_to_collection('losses', loss)
-        tf.summary.scalar(scope+'/regularizer_loss', loss)
+        tf.summary.scalar(scope + '/regularizer_loss', loss)
         return loss
 
 
 def total_loss(name='total'):
     with tf.name_scope(name) as scope:
         loss = tf.add_n(tf.get_collection('losses'), name='total_loss')
-        tf.summary.scalar(scope+'/total_loss', loss)
+        tf.summary.scalar(scope + '/total_loss', loss)
         return loss
 
 
@@ -46,7 +46,7 @@ def accuracy(logits, labels, name='accuracy'):
     with tf.name_scope(name) as scope:
         correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
         accuracy_value = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
-        tf.summary.scalar(scope+'accuracy', accuracy_value)
+        tf.summary.scalar(scope + 'accuracy', accuracy_value)
         return accuracy_value
 
 
@@ -72,7 +72,7 @@ def print_all_variables(sess, train_only=True):
     else:
         try:
             t_vars = tf.global_variables()
-        except:
+        except ValueError:
             t_vars = tf.all_variables()
         print('[*] printing global variables')
     for idx, v in enumerate(t_vars):

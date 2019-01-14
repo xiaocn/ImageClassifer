@@ -59,14 +59,14 @@ def distort_color(image, color_ordering=0, fast_mode=True, scope=None):
         return tf.clip_by_value(image, 0.0, 1.0)
 
 
-def preprocess_for_train(image, height, width, fast_mode=True, central_fraction=0.95, scope=None):
+def preprocess_for_train(image, height, width, fast_mode=True, scope=None):
     with tf.name_scope(scope, 'distort_image', [image, height, width]):
         if image.dtype != tf.float32:
             image = tf.image.convert_image_dtype(image, dtype=tf.float32)
 
         num_resize_cases = 1 if fast_mode else 4
         distorted_image = apply_with_random_selector(image, lambda x, method:
-                                                     tf.image.resize_images(x, [height,width], method),
+                                                     tf.image.resize_images(x, [height, width], method),
                                                      num_cases=num_resize_cases)
         tf.summary.image('cropped_resized_image', tf.expand_dims(distorted_image, 0))
         distorted_image = tf.image.random_flip_left_right(distorted_image)
@@ -79,7 +79,7 @@ def preprocess_for_train(image, height, width, fast_mode=True, central_fraction=
         return distorted_image
 
 
-def preprocess_for_eval(image, height, width, central_fraction=0.95, scope=None):
+def preprocess_for_eval(image, height, width, scope=None):
     with tf.name_scope(scope, 'eval_image', [image, height, width]):
         if image.dtype != tf.float32:
             image = tf.image.convert_image_dtype(image, dtype=tf.float32)
@@ -90,16 +90,15 @@ def preprocess_for_eval(image, height, width, central_fraction=0.95, scope=None)
         return image
 
 
-def preprocess_for_store(image, height, width, central_fraction=0.95):
+def preprocess_for_store(image, height, width):
     image = tf.cast(image, dtype=tf.float32)
     image = tf.multiply(image, 0.00392157)
-
     image = tf.expand_dims(image, 0)
     image = tf.image.resize_bilinear(image, [height, width], align_corners=False)
     return image
 
 
-def preprocess(image, height, width, scope=None, is_training=False):
+def preprocess(image, height, width, is_training=False):
     if is_training:
         return preprocess_for_train(image, height, width)
     else:
